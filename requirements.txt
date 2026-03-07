@@ -1,0 +1,31 @@
+# ============================================================
+# Turb-DETR Underwater Plastic Detection — Requirements
+# Python 3.10+  |  CUDA 11.8+ / 12.x  |  Colab-compatible
+# ============================================================
+# Install:  pip install -r requirements.txt
+# On Colab: torch + torchvision are pre-installed — skip them
+#           or run:  pip install -r requirements.txt --quiet
+
+# ── Core Deep Learning ──────────────────────────────────────
+torch>=2.2.0
+torchvision>=0.17.0
+ultralytics>=8.3.0          # RT-DETR, YOLOv8/v9/v11 — unified API
+
+# ── Image Processing ────────────────────────────────────────
+opencv-python-headless>=4.10.0   # headless = no GUI deps (Colab-safe)
+numpy>=1.26.0
+
+# ── Visualization ───────────────────────────────────────────
+matplotlib>=3.9.0
+
+# ── Experiment Tracking ─────────────────────────────────────
+wandb>=0.18.0               # Weights & Biases
+
+# ── Model Profiling ─────────────────────────────────────────
+thop>=0.1.1                 # FLOP / param counting for PyTorch models
+
+# ── Config ───────────────────────────────────────────────────
+pyyaml>=6.0.2
+
+# ── Utilities ────────────────────────────────────────────────
+tqdm>=4.67.0

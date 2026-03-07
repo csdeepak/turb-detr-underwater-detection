@@ -1,0 +1,34 @@
+# ============================================================
+# Model Configuration — Turb-DETR Architecture
+# ============================================================
+
+# RT-DETR backbone + turbidity-aware modifications
+backbone:
+  type: resnet50             # resnet50 / resnet101 / hgnetv2
+  pretrained: true
+  freeze_bn: false
+  freeze_stages: 0           # freeze first N stages (0 = train all)
+
+# Hybrid encoder (RT-DETR style)
+encoder:
+  hidden_dim: 256
+  num_heads: 8
+  num_encoder_layers: 1
+  dim_feedforward: 1024
+  dropout: 0.0
+  activation: gelu
+
+# Decoder
+decoder:
+  hidden_dim: 256
+  num_heads: 8
+  num_decoder_layers: 6
+  dim_feedforward: 1024
+  dropout: 0.0
+  num_queries: 300
+
+# Turbidity-aware attention (custom module)
+turbidity_module:
+  enabled: true
+  attention_type: channel     # channel / spatial / dual
+  reduction_ratio: 16

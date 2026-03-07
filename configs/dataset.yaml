@@ -1,0 +1,21 @@
+# ============================================================
+# Dataset Configuration — Turb-DETR
+# ============================================================
+
+# Paths (override via CLI or Colab mount)
+path: ./data                # dataset root
+train: raw/images/train     # train images relative to 'path'
+val: raw/images/val         # validation images relative to 'path'
+test: raw/images/test       # test images relative to 'path'
+
+# Class definitions
+names:
+  0: plastic_bag
+  1: plastic_bottle
+  2: plastic_container
+  3: fishing_net
+  4: rope
+  5: styrofoam
+  6: other_plastic
+
+nc: 7                       # number of classes
