@@ -92,7 +92,7 @@ def print_env_info() -> None:
     log(f"CUDA available: {torch.cuda.is_available()}")
     if torch.cuda.is_available():
         log(f"GPU           : {torch.cuda.get_device_name(0)}")
-        mem = torch.cuda.get_device_properties(0).total_mem / 1e9
+        mem = torch.cuda.get_device_properties(0).total_memory / 1e9
         log(f"GPU memory    : {mem:.1f} GB")
     log(f"Device        : {device}")
 

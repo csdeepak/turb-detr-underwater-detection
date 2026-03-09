@@ -35,10 +35,22 @@ def run_training(config_path: str | Path) -> None:
 
     logger.info(f"Initializing {model_cfg['name']} (pretrained={model_cfg['pretrained']})")
 
+    use_simam = model_cfg.get("use_simam", True)
+    logger.info(f"SimAM injection: {use_simam}")
+
     model = TurbDETR(
         model_variant=model_cfg["name"],
         weights=None,  # use COCO-pretrained default
+        use_simam=use_simam,
     )
+
+    # Pass standard Ultralytics augmentation keys; skip custom flags the trainer doesn't consume
+    _ULTRALYTICS_AUG_KEYS = {
+        "hsv_h", "hsv_s", "hsv_v", "degrees", "translate",
+        "scale", "flipud", "fliplr", "mosaic", "mixup",
+    }
+    aug_cfg = cfg.get("augmentation", {})
+    aug_kwargs = {k: v for k, v in aug_cfg.items() if k in _ULTRALYTICS_AUG_KEYS}
 
     train_kwargs: dict[str, Any] = {
         "epochs": train_cfg["epochs"],
@@ -56,6 +68,7 @@ def run_training(config_path: str | Path) -> None:
         "name": output_cfg["name"],
         "save_period": output_cfg["save_period"],
         "exist_ok": output_cfg["exist_ok"],
+        **aug_kwargs,
     }
 
     logger.info("Starting training …")

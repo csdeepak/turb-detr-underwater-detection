@@ -6,8 +6,9 @@
 model:
   name: rtdetr-l             # Ultralytics RT-DETR variant (rtdetr-l / rtdetr-x)
   pretrained: true
-  num_classes: 7
+  num_classes: 5             # Trash-ICRA19: plastic, bottle, can, bag, net
   imgsz: 640
+  use_simam: true            # false = train vanilla RT-DETR baseline
 
 # ── Training Hyperparameters ─────────────────────────────────
 training:
@@ -24,7 +25,7 @@ training:
 
 # ── Data ─────────────────────────────────────────────────────
 data:
-  config: configs/dataset.yaml
+  config: configs/trash_icra19.yaml   # 5-class Trash-ICRA19 dataset
   workers: 8
   cache: false               # set true on Colab for speed
 

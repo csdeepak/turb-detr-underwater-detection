@@ -28,14 +28,21 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Path to trained model weights (.pt)",
     )
+    parser.add_argument(
+        "--no-simam",
+        action="store_true",
+        default=False,
+        help="Disable SimAM injection (use when evaluating baseline RT-DETR weights)",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    logger.info(f"Loading weights from {args.weights}")
+    use_simam = not args.no_simam
+    logger.info(f"Loading weights from {args.weights} (SimAM={use_simam})")
 
-    model = TurbDETR(weights=args.weights)
+    model = TurbDETR(weights=args.weights, use_simam=use_simam)
 
     import yaml
     with open(args.config) as f:

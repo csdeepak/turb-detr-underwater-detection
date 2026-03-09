@@ -25,12 +25,11 @@ from pathlib import Path
 from typing import Any
 
 import matplotlib
+matplotlib.use("Agg")  # non-interactive backend — must come before pyplot
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from ultralytics import YOLO
-
-matplotlib.use("Agg")  # non-interactive backend for server / Colab
 
 
 # ─────────────────────────────────────────────────────────────

@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from ultralytics import RTDETR, YOLO
+from ultralytics import YOLO
 
 
 # ─────────────────────────────────────────────────────────────
@@ -225,7 +225,7 @@ def evaluate_dataset(
     per_class: dict[str, dict[str, float]] = {}
     class_names = metrics.names if hasattr(metrics, "names") else {}
     if hasattr(metrics.box, "ap50"):
-        ap50_arr = metrics.box.ap50()  # ndarray (num_classes,)
+        ap50_arr = metrics.box.ap50  # ndarray (num_classes,)
         for i, ap in enumerate(ap50_arr):
             name = class_names.get(i, f"class_{i}")
             per_class[name] = {"AP50": float(ap)}

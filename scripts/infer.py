@@ -36,14 +36,21 @@ def parse_args() -> argparse.Namespace:
         default="outputs/visualizations",
         help="Directory to save results",
     )
+    parser.add_argument(
+        "--no-simam",
+        action="store_true",
+        default=False,
+        help="Disable SimAM injection (use when running baseline RT-DETR weights)",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    logger.info(f"Running inference: source={args.source}, weights={args.weights}")
+    use_simam = not args.no_simam
+    logger.info(f"Running inference: source={args.source}, weights={args.weights}, SimAM={use_simam}")
 
-    model = TurbDETR(weights=args.weights)
+    model = TurbDETR(weights=args.weights, use_simam=use_simam)
     results = model.predict(
         source=args.source,
         imgsz=args.imgsz,
