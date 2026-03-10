@@ -139,19 +139,48 @@ def _train_inline(
     imgsz: int,
 ) -> dict:
     """Inline training without a subprocess (imports TurbDETR directly)."""
+    import random
     from models.turb_detr import TurbDETR
+    from augmentation.turbidity_aug import apply_turbidity
 
     model = TurbDETR(model_variant="rtdetr-l", use_simam=variant.use_simam)
+
+    # ── Turbidity augmentation ───────────────────────────────
+    # Register the Beer-Lambert turbidity callback when this variant
+    # requires it.  Without this, Variants B and D are identical to
+    # Variants A and C — the entire turbidity-aug axis collapses.
+    if variant.use_turbidity_aug:
+        class _TurbidityTransform:
+            def __call__(self, labels):
+                if random.random() < 0.5:
+                    img = labels.get("img")
+                    if img is not None:
+                        labels["img"] = apply_turbidity(img, level=random.uniform(0.1, 0.7))
+                return labels
+
+        def _on_train_start(trainer):
+            ds = getattr(trainer, "train_loader", None)
+            if ds is None:
+                print(f"[ablation:{variant.name}] train_loader not found — turbidity aug skipped.")
+                return
+            ds = trainer.train_loader.dataset
+            transforms_obj = getattr(ds, "transforms", None)
+            if transforms_obj is None or not hasattr(transforms_obj, "transforms"):
+                print(
+                    f"[ablation:{variant.name}] dataset.transforms has unexpected structure — "
+                    "turbidity aug NOT applied. Check Ultralytics version."
+                )
+                return
+            transforms_obj.transforms.insert(0, _TurbidityTransform())
+            print(f"[ablation:{variant.name}] turbidity aug injected (prob=0.5, level=0.1–0.7)")
+
+        model.model.add_callback("on_train_start", _on_train_start)
+
     extra_augment = {
-        "mixup":  0.1,
-        "mosaic": 1.0,
+        "mixup":   0.1,
+        "mosaic":  1.0,
         "degrees": 5.0,
     }
-    if not variant.use_turbidity_aug:
-        # Disable underwater augmentation flags via Ultralytics kwargs
-        extra_augment["hsv_h"] = 0.0
-        extra_augment["hsv_s"] = 0.0
-        extra_augment["hsv_v"] = 0.0
 
     results = model.train(
         data_cfg=data_cfg,
@@ -178,7 +207,9 @@ def _results_to_dict(results) -> dict:
             "precision": float(results.results_dict.get("metrics/precision(B)", 0.0)),
             "recall":    float(results.results_dict.get("metrics/recall(B)",    0.0)),
         }
-    except Exception:
+    except Exception as exc:
+        print(f"[ablation] WARNING: failed to extract metrics from results: {exc}")
+        print("[ablation] Returning zeros — check training logs for the cause.")
         return {"map50": 0.0, "map5095": 0.0, "precision": 0.0, "recall": 0.0}
 
 
@@ -186,11 +217,13 @@ def _extract_metrics(run_dir: Path) -> dict:
     """Try to read metrics from results.csv if it exists."""
     csv_path = run_dir / "results.csv"
     if not csv_path.exists():
+        print(f"[ablation] WARNING: results.csv not found in {run_dir} — returning zeros.")
         return {"map50": 0.0, "map5095": 0.0, "precision": 0.0, "recall": 0.0}
     try:
         import csv
         rows = list(csv.DictReader(open(csv_path)))
         if not rows:
+            print(f"[ablation] WARNING: results.csv in {run_dir} is empty — returning zeros.")
             return {"map50": 0.0, "map5095": 0.0, "precision": 0.0, "recall": 0.0}
         last = rows[-1]
         return {
@@ -199,7 +232,8 @@ def _extract_metrics(run_dir: Path) -> dict:
             "precision": float(last.get("metrics/precision(B)",0.0)),
             "recall":    float(last.get("metrics/recall(B)",   0.0)),
         }
-    except Exception:
+    except Exception as exc:
+        print(f"[ablation] WARNING: failed to parse {csv_path}: {exc}")
         return {"map50": 0.0, "map5095": 0.0, "precision": 0.0, "recall": 0.0}
 
 

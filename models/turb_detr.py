@@ -36,6 +36,7 @@ Design constraints
 from __future__ import annotations
 
 import time
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +46,11 @@ import yaml
 from ultralytics import RTDETR
 
 from models.simam import SimAM
+
+# Names that indicate the hook landed on the full model rather than a backbone sub-module.
+# If the hooked module type matches any of these, the injection is almost certainly wrong.
+_FULL_MODEL_TYPE_FRAGMENTS = ("RTDETR", "DetectionModel", "RTDETRDetectionModel", "YOLOv")
+
 
 
 # ─────────────────────────────────────────────────────────────
@@ -251,6 +257,50 @@ class TurbDETR:
             # will process whatever the first forward output is.
             backbone = inner_model
 
+        # ── Validate injection target ────────────────────────
+        # If the backbone resolves to the full model, SimAM will run on the
+        # raw input image tensor, *not* on CNN feature maps.  That is not
+        # turbidity suppression — it is a near-identity op that will silently
+        # produce wrong results.  Raise loudly so this is never missed.
+        backbone_type = type(backbone).__name__
+        if any(frag in backbone_type for frag in _FULL_MODEL_TYPE_FRAGMENTS):
+            warnings.warn(
+                f"[TurbDETR] SimAM hook resolved to '{backbone_type}', which looks "
+                "like the full model rather than a CNN backbone sub-module. "
+                "SimAM will be applied to the raw input image, NOT to backbone features. "
+                "Check the Ultralytics model version and update _inject_simam().",
+                RuntimeWarning,
+                stacklevel=3,
+            )
+
+        # Confirm the hook output is a tensor or list of tensors with ≥3 dims
+        # by registering a one-shot diagnostic hook first.
+        _shape_info: list[str] = []
+        def _probe(mod, inp, out):
+            if isinstance(out, (list, tuple)):
+                _shape_info.append(str([tuple(f.shape) for f in out if isinstance(f, torch.Tensor)]))
+            elif isinstance(out, torch.Tensor):
+                _shape_info.append(str(tuple(out.shape)))
+        _probe_handle = backbone.register_forward_hook(_probe)
+        try:
+            dummy = torch.zeros(1, 3, 64, 64)
+            with torch.no_grad():
+                self.model.model(dummy)
+        except Exception:
+            pass  # probe is best-effort; don't break init
+        finally:
+            _probe_handle.remove()
+
+        if _shape_info:
+            _log(f"Hook target '{backbone_type}' output shape(s): {_shape_info[0]}")
+        else:
+            warnings.warn(
+                f"[TurbDETR] Could not probe hook target '{backbone_type}' output shapes — "
+                "verify SimAM is injected at the correct position.",
+                RuntimeWarning,
+                stacklevel=3,
+            )
+
         hook = SimAMFeatureHook(lambda_param=lambda_param)
         handle = backbone.register_forward_hook(hook)
         hook._handle = handle
@@ -258,7 +308,7 @@ class TurbDETR:
 
         _log(
             f"SimAM turbidity suppression injected after "
-            f"'{type(backbone).__name__}' (λ={lambda_param:.0e})"
+            f"'{backbone_type}' (λ={lambda_param:.0e})"
         )
 
     def remove_simam(self) -> None:

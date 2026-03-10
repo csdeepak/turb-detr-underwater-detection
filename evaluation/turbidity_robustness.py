@@ -2,6 +2,9 @@
 
 Tests how model mAP degrades across increasing turbidity levels.
 
+Metrics use Ultralytics .val() (COCO-style AP@0.5) so the robustness curve
+is on the same scale as the numbers in the main evaluation table.
+
 Usage
 -----
     python evaluation/turbidity_robustness.py \\
@@ -21,10 +24,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
-from typing import NamedTuple
 
 import cv2
 import matplotlib
@@ -32,6 +34,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import yaml
 from ultralytics import RTDETR
 
 # Add project root to path so local imports work
@@ -39,108 +42,11 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from augmentation.turbidity_aug import apply_turbidity
 
+# Default class names for Trash-ICRA19
+_DEFAULT_CLASS_NAMES = {0: "plastic", 1: "bottle", 2: "can", 3: "bag", 4: "net"}
 
 # ─────────────────────────────────────────────────────────────
-# Data structures
-# ─────────────────────────────────────────────────────────────
-class Detection(NamedTuple):
-    cls: int
-    x1: float; y1: float; x2: float; y2: float
-    conf: float
-
-
-class GroundTruth(NamedTuple):
-    cls: int
-    x1: float; y1: float; x2: float; y2: float
-
-
-# ─────────────────────────────────────────────────────────────
-# Load YOLO-format ground truth labels
-# ─────────────────────────────────────────────────────────────
-def load_yolo_labels(label_path: Path, img_w: int, img_h: int) -> list[GroundTruth]:
-    """Read a YOLO .txt label file and return absolute xyxy boxes."""
-    gts: list[GroundTruth] = []
-    if not label_path.exists():
-        return gts
-    with open(label_path) as f:
-        for line in f:
-            parts = line.strip().split()
-            if len(parts) != 5:
-                continue
-            cls, cx, cy, bw, bh = int(parts[0]), *map(float, parts[1:])
-            x1 = (cx - bw / 2) * img_w
-            y1 = (cy - bh / 2) * img_h
-            x2 = (cx + bw / 2) * img_w
-            y2 = (cy + bh / 2) * img_h
-            gts.append(GroundTruth(cls, x1, y1, x2, y2))
-    return gts
-
-
-# ─────────────────────────────────────────────────────────────
-# IoU
-# ─────────────────────────────────────────────────────────────
-def iou(a: tuple, b: tuple) -> float:
-    ax1, ay1, ax2, ay2 = a
-    bx1, by1, bx2, by2 = b
-    ix1 = max(ax1, bx1); iy1 = max(ay1, by1)
-    ix2 = min(ax2, bx2); iy2 = min(ay2, by2)
-    inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
-    union = (ax2 - ax1) * (ay2 - ay1) + (bx2 - bx1) * (by2 - by1) - inter
-    return inter / (union + 1e-9)
-
-
-# ─────────────────────────────────────────────────────────────
-# Compute AP@0.5 for a single class from detections
-# ─────────────────────────────────────────────────────────────
-def compute_ap50(
-    dets: list[Detection],
-    gts: list[GroundTruth],
-    cls_id: int,
-    iou_thresh: float = 0.5,
-) -> float:
-    class_dets = [d for d in dets if d.cls == cls_id]
-    class_gts  = [g for g in gts  if g.cls == cls_id]
-    if not class_gts:
-        return float("nan")
-    if not class_dets:
-        return 0.0
-
-    class_dets.sort(key=lambda d: d.conf, reverse=True)
-    matched = [False] * len(class_gts)
-    tp = []
-    fp = []
-    for det in class_dets:
-        best_iou = 0.0
-        best_idx = -1
-        for i, gt in enumerate(class_gts):
-            if matched[i]:
-                continue
-            v = iou((det.x1, det.y1, det.x2, det.y2),
-                    (gt.x1,  gt.y1,  gt.x2,  gt.y2))
-            if v > best_iou:
-                best_iou = v
-                best_idx = i
-        if best_iou >= iou_thresh and best_idx >= 0:
-            matched[best_idx] = True
-            tp.append(1); fp.append(0)
-        else:
-            tp.append(0); fp.append(1)
-
-    tp_cum = np.cumsum(tp)
-    fp_cum = np.cumsum(fp)
-    recall    = tp_cum / (len(class_gts) + 1e-9)
-    precision = tp_cum / (tp_cum + fp_cum + 1e-9)
-
-    recall    = np.concatenate([[0.0], recall,    [1.0]])
-    precision = np.concatenate([[1.0], precision, [0.0]])
-    for i in range(len(precision) - 2, -1, -1):
-        precision[i] = max(precision[i], precision[i + 1])
-    idx = np.where(recall[1:] != recall[:-1])[0]
-    return float(np.sum((recall[idx + 1] - recall[idx]) * precision[idx + 1]))
-
-
-# ─────────────────────────────────────────────────────────────
-# Evaluate a model at a given turbidity level
+# Evaluate a model at a given turbidity level using Ultralytics .val()
 # ─────────────────────────────────────────────────────────────
 def evaluate_at_level(
     model: RTDETR,
@@ -148,52 +54,54 @@ def evaluate_at_level(
     label_dir: Path,
     turbidity_level: float,
     num_classes: int = 5,
-    conf_thresh: float = 0.25,
+    conf_thresh: float = 0.001,
+    class_names: dict[int, str] | None = None,
 ) -> float:
-    """Return mean AP@0.5 across all classes at a given turbidity level."""
-    all_dets: list[Detection] = []
-    all_gts:  list[GroundTruth] = []
+    """Return mAP@0.5 at a given turbidity level using Ultralytics .val().
+
+    Writes augmented images + their original labels into a temporary YOLO
+    dataset, fires ``model.val()`` on it, and returns ``metrics.box.map50``.
+    This uses the same COCO-style evaluation as evaluate.py so the numbers
+    are directly comparable to the main evaluation table.
+    """
+    if class_names is None:
+        class_names = _DEFAULT_CLASS_NAMES
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)
-        aug_paths: list[Path] = []
+        imgs_dst = tmp_dir / "images" / "test"
+        lbls_dst = tmp_dir / "labels" / "test"
+        imgs_dst.mkdir(parents=True)
+        lbls_dst.mkdir(parents=True)
 
         for img_path in img_paths:
             img = cv2.imread(str(img_path))
             if img is None:
                 continue
-            if turbidity_level > 0.0:
-                # apply_turbidity expects BGR (OpenCV convention) — img is already BGR
-                aug_bgr = apply_turbidity(img, level=turbidity_level)
-            else:
-                aug_bgr = img
-            aug_path = tmp_dir / img_path.name
-            cv2.imwrite(str(aug_path), aug_bgr)
-            aug_paths.append((aug_path, img_path, img.shape[1], img.shape[0]))
+            aug = apply_turbidity(img, level=turbidity_level) if turbidity_level > 0.0 else img
+            cv2.imwrite(str(imgs_dst / img_path.name), aug)
+            lbl = label_dir / (img_path.stem + ".txt")
+            if lbl.exists():
+                shutil.copy2(lbl, lbls_dst / lbl.name)
 
-        # Run batch inference
-        paths_only = [str(p[0]) for p in aug_paths]
-        results = model.predict(paths_only, conf=conf_thresh, verbose=False, stream=False)
+        # Write a minimal YOLO data YAML
+        data_yaml_path = tmp_dir / "data.yaml"
+        data_yaml_path.write_text(
+            yaml.dump({
+                "path": str(tmp_dir),
+                "test": "images/test",
+                "nc": num_classes,
+                "names": class_names,
+            })
+        )
 
-        for result, (aug_path, orig_path, w, h) in zip(results, aug_paths):
-            # Collect detections
-            if result.boxes is not None and len(result.boxes):
-                boxes = result.boxes.xyxy.cpu().numpy()
-                clss  = result.boxes.cls.cpu().numpy().astype(int)
-                confs = result.boxes.conf.cpu().numpy()
-                for box, cls, conf in zip(boxes, clss, confs):
-                    all_dets.append(Detection(cls, *box, conf))
-
-            # Collect ground truths
-            label_path = label_dir / (orig_path.stem + ".txt")
-            all_gts.extend(load_yolo_labels(label_path, w, h))
-
-    aps = []
-    for cls_id in range(num_classes):
-        ap = compute_ap50(all_dets, all_gts, cls_id)
-        if not np.isnan(ap):
-            aps.append(ap)
-    return float(np.mean(aps)) if aps else 0.0
+        metrics = model.val(
+            data=str(data_yaml_path),
+            split="test",
+            conf=conf_thresh,
+            verbose=False,
+        )
+        return float(metrics.box.map50)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -207,6 +115,7 @@ def run_robustness_eval(
     turbidity_levels: list[float] | None = None,
     max_images: int = 200,
     num_classes: int = 5,
+    class_names: dict[int, str] | None = None,
 ) -> None:
     data_dir   = Path(data_dir)
     label_dir  = Path(label_dir)
@@ -237,7 +146,8 @@ def run_robustness_eval(
             label = f"{model_name} | turbidity={level:.1f}"
             print(f"  Evaluating {label} ...", end=" ", flush=True)
             map50 = evaluate_at_level(
-                model, img_paths, label_dir, level, num_classes
+                model, img_paths, label_dir, level, num_classes,
+                class_names=class_names,
             )
             model_results.append(map50)
             print(f"mAP@0.5 = {map50:.4f}")

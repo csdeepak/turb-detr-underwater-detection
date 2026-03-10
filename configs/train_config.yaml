@@ -41,10 +41,15 @@ augmentation:
   fliplr: 0.5
   mosaic: 1.0
   mixup: 0.1
-  # Underwater-specific (custom pipeline)
+  # Underwater-specific (applied via trainer callback — NOT Ultralytics native)
+  # turbidity_simulation: injects apply_turbidity() into the dataset transform
+  # list before training starts.  See training/trainer.py _make_turbidity_callback.
   underwater_color_shift: true
   turbidity_simulation: true
   caustic_overlay: false
+  turbidity_prob: 0.5          # probability of applying turbidity per image
+  turbidity_level_min: 0.1     # minimum turbidity level (Beer-Lambert depth)
+  turbidity_level_max: 0.7     # maximum turbidity level
 
 # ── Output ───────────────────────────────────────────────────
 output:

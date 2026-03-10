@@ -1,4 +1,13 @@
-"""Learning-rate scheduler helpers (wrappers around PyTorch schedulers)."""
+"""Learning-rate scheduler helpers (wrappers around PyTorch schedulers).
+
+DEAD CODE — NOT CALLED ANYWHERE.
+Ultralytics manages its own cosine-decay schedule internally via the ``lrf``
+training parameter (final LR = lr0 * lrf).  A custom LambdaLR cannot be
+injected into the Ultralytics training loop without patching the trainer
+subclass, so this module is unused.  It is kept here for reference only;
+do NOT wire it into trainer.py unless you also subclass Ultralytics' own
+trainer and override ``build_optimizer``.
+"""
 
 from __future__ import annotations
 

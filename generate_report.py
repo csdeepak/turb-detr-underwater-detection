@@ -1,6 +1,7 @@
 """Generate a detailed PDF project report for Turb-DETR."""
 from __future__ import annotations
 import textwrap
+from datetime import datetime
 from fpdf import FPDF
 
 class ReportPDF(FPDF):
@@ -98,7 +99,7 @@ def build_report(out_path: str = "Turb_DETR_Project_Report.pdf"):
     pdf.set_font("Helvetica", "", 12)
     pdf.set_text_color(80, 80, 80)
     pdf.cell(0, 8, "Project Progress Report", align="C", new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(0, 8, "Date: March 8, 2026", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 8, f"Date: {datetime.now().strftime('%B %d, %Y')}", align="C", new_x="LMARGIN", new_y="NEXT")
     pdf.cell(0, 8, "Course: AISD - PES University, Semester 6", align="C", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(20)
     pdf.set_draw_color(25, 60, 120)

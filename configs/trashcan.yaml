@@ -25,7 +25,15 @@ path: ./data/trashcan
 # ── Split Directories (relative to 'path') ──────────────────
 train: images/train
 val:   images/val
-test:  images/val   # TrashCan has no separate test split; val used for test evaluation
+# TrashCan has no separate test split.  To avoid evaluating on the same
+# data used for early-stopping (val leakage), hold out a random 20% of
+# the train set as an unseen test split before training, or report val
+# metrics explicitly as 'val' rather than 'test' in any published table.
+# Until a held-out test split exists, do NOT report TrashCan test numbers.
+# test: images/test
+# TrashCAN ships with train+val only — images/test does NOT exist.
+# Run scripts/convert_trashcan_split.py to carve out a held-out test set,
+# then uncomment the line above.  Until then, evaluate on 'val' only.
 
 # ── Class Definitions ────────────────────────────────────────
 # Mapped to Trash-ICRA19 class IDs for cross-dataset evaluation.

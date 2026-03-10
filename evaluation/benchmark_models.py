@@ -44,7 +44,9 @@ DATASET_CONFIGS: dict[str, dict[str, Any]] = {
     "trashcan": {
         "data_yaml": "configs/trashcan.yaml",
         "description": "TrashCan",
-        "split": "test",
+        # TrashCAN has no held-out test split yet.  Use 'val' until you run
+        # scripts/convert_trashcan_split.py to carve out a genuine test set.
+        "split": "val",
     },
     "ruie": {
         "data_yaml": "configs/ruie.yaml",
@@ -105,20 +107,27 @@ def measure_fps(
     iterations: int = 100,
     device: str = "cpu",
 ) -> float:
-    """Measure inference FPS with a synthetic tensor."""
+    """Measure model inference FPS using the raw model forward pass only.
+
+    Bypasses model.predict() (Python pre/postprocessing overhead) so the
+    numbers are comparable to the FPS reported by evaluate.py.
+    """
     dev = torch.device("cuda:0" if device not in ("cpu",) else "cpu")
+    inner = model.model.eval()
+    inner = inner.to(dev)
     dummy = torch.randn(1, 3, imgsz, imgsz, device=dev)
 
-    for _ in range(warmup):
-        model.predict(source=dummy, verbose=False, device=device)
+    with torch.no_grad():
+        for _ in range(warmup):
+            inner(dummy)
 
-    if dev.type == "cuda":
-        torch.cuda.synchronize()
-    t0 = time.perf_counter()
-    for _ in range(iterations):
-        model.predict(source=dummy, verbose=False, device=device)
-    if dev.type == "cuda":
-        torch.cuda.synchronize()
+        if dev.type == "cuda":
+            torch.cuda.synchronize()
+        t0 = time.perf_counter()
+        for _ in range(iterations):
+            inner(dummy)
+        if dev.type == "cuda":
+            torch.cuda.synchronize()
 
     return iterations / (time.perf_counter() - t0)
 

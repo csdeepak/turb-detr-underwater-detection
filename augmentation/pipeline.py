@@ -8,21 +8,28 @@ import albumentations as A
 import numpy as np
 from albumentations.pytorch import ToTensorV2
 
+from augmentation.turbidity_aug import apply_turbidity  # physics-accurate (Beer-Lambert)
 from augmentation.underwater import (
     add_caustic_pattern,
-    simulate_turbidity,
     underwater_color_shift,
 )
 
 
 class UnderwaterAugmentation(A.ImageOnlyTransform):
-    """Albumentations-compatible wrapper for underwater-specific transforms."""
+    """Albumentations-compatible wrapper for underwater-specific transforms.
+
+    Uses ``apply_turbidity`` from ``turbidity_aug`` (Beer-Lambert + backscatter
+    + forward-scatter) for turbidity simulation — the same model used during
+    turbidity robustness evaluation — so train/eval augmentation is consistent.
+    """
 
     def __init__(
         self,
         turbidity_prob: float = 0.5,
         color_shift_prob: float = 0.5,
         caustic_prob: float = 0.2,
+        turbidity_level_min: float = 0.1,
+        turbidity_level_max: float = 0.7,
         always_apply: bool = False,
         p: float = 1.0,
     ) -> None:
@@ -30,12 +37,19 @@ class UnderwaterAugmentation(A.ImageOnlyTransform):
         self.turbidity_prob = turbidity_prob
         self.color_shift_prob = color_shift_prob
         self.caustic_prob = caustic_prob
+        self.turbidity_level_min = turbidity_level_min
+        self.turbidity_level_max = turbidity_level_max
 
     def apply(self, img: np.ndarray, **params: Any) -> np.ndarray:
         rng = np.random.default_rng()
         if rng.random() < self.turbidity_prob:
-            intensity = rng.uniform(0.1, 0.4)
-            img = simulate_turbidity(img, intensity=intensity)
+            level = float(rng.uniform(self.turbidity_level_min, self.turbidity_level_max))
+            # apply_turbidity expects BGR uint8; img from Albumentations is RGB uint8 —
+            # convert, apply, convert back.
+            import cv2
+            bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            bgr = apply_turbidity(bgr, level=level)
+            img = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
         if rng.random() < self.color_shift_prob:
             img = underwater_color_shift(
                 img,
@@ -47,11 +61,26 @@ class UnderwaterAugmentation(A.ImageOnlyTransform):
         return img
 
     def get_transform_init_args_names(self) -> tuple[str, ...]:
-        return ("turbidity_prob", "color_shift_prob", "caustic_prob")
+        return (
+            "turbidity_prob",
+            "color_shift_prob",
+            "caustic_prob",
+            "turbidity_level_min",
+            "turbidity_level_max",
+        )
 
 
 def get_train_transforms(imgsz: int = 640) -> A.Compose:
-    """Standard training augmentation pipeline with underwater effects."""
+    """Standard training augmentation pipeline with underwater effects.
+
+    .. note::
+        **NOT called in the main Turb-DETR training path.**
+        Ultralytics manages its own transforms internally.  Turbidity
+        augmentation is injected via the ``on_train_start`` callback in
+        ``training/trainer.py`` instead.  This function is provided for
+        external / custom DataLoader pipelines that need a standalone
+        Albumentations pipeline.
+    """
     return A.Compose(
         [
             A.LongestMaxSize(max_size=imgsz),
@@ -71,7 +100,12 @@ def get_train_transforms(imgsz: int = 640) -> A.Compose:
 
 
 def get_val_transforms(imgsz: int = 640) -> A.Compose:
-    """Validation / test augmentation pipeline (deterministic)."""
+    """Validation / test augmentation pipeline (deterministic).
+
+    .. note::
+        **NOT called in the main Turb-DETR evaluation path.**
+        Provided for external / custom DataLoader pipelines only.
+    """
     return A.Compose(
         [
             A.LongestMaxSize(max_size=imgsz),
