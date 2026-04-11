@@ -1,0 +1,27 @@
+# Jaffe-McGlamery Augmentation Parameters
+# These should be calibrated against UFO-120 (see src/augmentation/calibrate.py)
+
+turbidity_levels:
+  light:
+    c: 0.05           # Attenuation coefficient
+    depth: 3.0         # Simulated depth (meters)
+    description: "Clear coastal water"
+
+  medium:
+    c: 0.15
+    depth: 3.0
+    description: "Moderate turbidity, river outflow"
+
+  heavy:
+    c: 0.30
+    depth: 3.0
+    description: "High turbidity, harbor/estuarine"
+
+# Backscatter parameters (BGR channel order)
+backscatter:
+  green: 0.30          # Dominant in coastal water
+  blue: 0.10
+  red: 0.05            # Minimal
+
+noise_scale: 0.02      # Base particle scatter noise
+seed: 42

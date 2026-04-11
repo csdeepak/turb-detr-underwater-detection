@@ -1,0 +1,40 @@
+# Core
+torch>=2.1.0
+torchvision>=0.16.0
+ultralytics==8.3.40
+numpy>=1.24.0
+opencv-python>=4.8.0
+Pillow>=10.0.0
+
+# Experiment tracking
+wandb>=0.16.0
+
+# Evaluation & statistics
+scikit-learn>=1.3.0
+scipy>=1.11.0
+statsmodels>=0.14.0
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Model profiling
+thop>=0.1.1
+
+# Image quality metrics
+scikit-image>=0.21.0
+
+# Data handling
+pandas>=2.0.0
+PyYAML>=6.0
+tqdm>=4.65.0
+
+# Jupyter (development)
+jupyter>=1.0.0
+ipywidgets>=8.0.0
+
+# Testing
+pytest>=7.4.0
+
+# Reproducibility
+python-dotenv>=1.0.0

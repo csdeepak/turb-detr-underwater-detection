@@ -1,0 +1,17 @@
+# Turb-DETR Training Config
+# RT-DETR with SimAM injection + turbidity augmentation
+model: rtdetr-l.pt
+data: configs/datasets/trash_icra19.yaml
+epochs: 150
+imgsz: 640
+batch: 16
+seed: 42
+project: results
+name: turbdetr
+device: 0
+workers: 4
+patience: 20
+
+# NOTE: SimAM injection is done in code (src/models/turb_detr.py)
+# not through config. This config is for Ultralytics CLI.
+# Custom training script handles the architecture modification.

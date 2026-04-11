@@ -1,0 +1,12 @@
+# Vanilla RT-DETR Baseline Training Config
+model: rtdetr-l.pt
+data: configs/datasets/trash_icra19.yaml
+epochs: 150           # Use 50 for sanity check, 150 for publication
+imgsz: 640
+batch: 16
+seed: 42
+project: results
+name: baseline_rtdetr
+device: 0
+workers: 4
+patience: 20          # Early stopping
